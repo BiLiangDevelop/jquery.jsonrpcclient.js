@@ -421,6 +421,7 @@
                     break;
                 }
             }
+            return;
         }
 
         // If we get here it's an invalid JSON-RPC response, pass to fallback message handler.
