@@ -48,9 +48,38 @@
             headers: {},   ///< Optional additional headers to send in $.ajax request.
             socketUrl: null, ///< WebSocket URL. (Not used if a custom getSocket is supplied.)
             onmessage: noop, ///< Optional onmessage-handler for WebSocket.
-            onopen: noop, ///< Optional onopen-handler for WebSocket.
+            onopen: function (event) {
+                if (self.reConnecting) {
+                    clearInterval(self.reConnecting);
+                }
+            }, ///< Optional onopen-handler for WebSocket.
             onclose: noop, ///< Optional onclose-handler for WebSocket.
-            onerror: noop, ///< Optional onerror-handler for WebSocket.
+            onerror: function (event) {
+                if (!self.reConnecting) {
+                    self.reConnecting = setInterval(() => {
+                        self._wsSocket = self._getSocket(this.wsOnMessage);
+                        self._wsSocket.onopen = function (event) {
+                            // Hook for extra onopen callback
+                            self.options.onopen(event);
+
+                            // Send queued requests.
+                            var timeout = self.options.timeout;
+                            var request;
+                            for (var i = 0; i < self._wsRequestQueue.length; i++) {
+                                request = self._wsRequestQueue[i];
+
+                                // Do we use timeouts, and if so, is it a call?
+                                if (timeout && self._wsCallbacks[request.id]) {
+                                    self._wsCallbacks[request.id].timeout = self._createTimeout(request.id);
+                                }
+                                self._wsSocket.send(request);
+                            }
+                            // self._wsRequestQueue = [];
+                        };
+
+                    }, 3000);
+                }
+            }, ///< Optional onerror-handler for WebSocket.
             /// Custom socket supplier for using an already existing socket
             getSocket: function (onmessageCb) {
                 return self._getSocket(onmessageCb);
@@ -316,7 +345,7 @@
                         }
                         socket.send(request);
                     }
-                    self._wsRequestQueue = [];
+                    // self._wsRequestQueue = [];
                 };
             }
         } else {
@@ -384,6 +413,14 @@
                 errorCb(response.error);
                 return;
             }
+
+            for (let i = 0; i < this._wsRequestQueue.length; i++) {
+                let request = this.JSON.parse(this._wsRequestQueue[i]);
+                if (request.id === response.id) {
+                    this._wsRequestQueue.splice(i, 1);
+                    break;
+                }
+            }
         }
 
         // If we get here it's an invalid JSON-RPC response, pass to fallback message handler.
@@ -395,6 +432,7 @@
      * Will execute all unresolved calls immideatly.
      **/
     JsonRpcClient.prototype._wsOnError = function (event) {
+        this._wsSocket = null;
         this._failAllCalls('Socket errored.');
         this.options.onerror(event);
     };
@@ -418,12 +456,16 @@
                 var errorCb = this._wsCallbacks[key].errorCb;
 
                 // Run callback with the error object as parameter.
-                errorCb(error);
+                //因为自动重连会多次回调错误，此处增加标记位，只回调一次错误
+                if (!this._wsCallbacks[key].hasReportError)
+                    errorCb(error);
+
+                this._wsCallbacks[key].hasReportError = true;
             }
         }
 
         // Throw 'em away
-        this._wsCallbacks = {};
+        // this._wsCallbacks = {};
     };
 
     /**
