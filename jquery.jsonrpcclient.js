@@ -61,20 +61,20 @@
                         self._wsSocket.onopen = function (event) {
                             // Hook for extra onopen callback
                             self.options.onopen(event);
-
                             // Send queued requests.
                             var timeout = self.options.timeout;
                             var request;
                             for (var i = 0; i < self._wsRequestQueue.length; i++) {
-                                request = self._wsRequestQueue[i];
+                                request = self.JSON.parse(self._wsRequestQueue[i]);
 
                                 // Do we use timeouts, and if so, is it a call?
                                 if (timeout && self._wsCallbacks[request.id]) {
                                     self._wsCallbacks[request.id].timeout = self._createTimeout(request.id);
                                 }
-                                self._wsSocket.send(request);
+                                self._wsSocket.send(self._wsRequestQueue[i]);
                             }
                             // self._wsRequestQueue = [];
+
                         };
 
                     }, 3000);
@@ -368,11 +368,11 @@
      * @param {event} event The websocket onmessage-event.
      */
     JsonRpcClient.prototype._wsOnMessage = function (event) {
-
         // Check if this could be a JSON RPC message.
         var response;
         try {
             response = this.JSON.parse(event.data);
+
         } catch (err) {
             this.options.onmessage(event);
             return;
@@ -398,7 +398,7 @@
 
                 // Run callback with result as parameter.
                 successCb(response.result);
-                return;
+                // return;
             }
 
             // If this is an object with error, it is an error response.
@@ -411,7 +411,7 @@
 
                 // Run callback with the error object as parameter.
                 errorCb(response.error);
-                return;
+                // return;
             }
 
             for (let i = 0; i < this._wsRequestQueue.length; i++) {
