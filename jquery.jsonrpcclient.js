@@ -49,15 +49,16 @@
             socketUrl: null, ///< WebSocket URL. (Not used if a custom getSocket is supplied.)
             onmessage: noop, ///< Optional onmessage-handler for WebSocket.
             onopen: function (event) {
+                console.log('WebSocket just open.');
                 if (self.reConnecting) {
                     clearInterval(self.reConnecting);
                 }
             }, ///< Optional onopen-handler for WebSocket.
             onclose: noop, ///< Optional onclose-handler for WebSocket.
             onerror: function (event) {
-                if (!self.reConnecting) {
+                // if (!self.reConnecting) {
                     self.reConnecting = setInterval(() => {
-                        self._wsSocket = self._getSocket(this.wsOnMessage);
+                        self._wsSocket = self._getSocket(self.wsOnMessage);
                         self._wsSocket.onopen = function (event) {
                             // Hook for extra onopen callback
                             self.options.onopen(event);
@@ -71,6 +72,7 @@
                                 if (timeout && self._wsCallbacks[request.id]) {
                                     self._wsCallbacks[request.id].timeout = self._createTimeout(request.id);
                                 }
+                                console.log('重发：', self._wsRequestQueue[i]);
                                 self._wsSocket.send(self._wsRequestQueue[i]);
                             }
                             // self._wsRequestQueue = [];
@@ -78,7 +80,7 @@
                         };
 
                     }, 3000);
-                }
+                // }
             }, ///< Optional onerror-handler for WebSocket.
             /// Custom socket supplier for using an already existing socket
             getSocket: function (onmessageCb) {
@@ -282,6 +284,7 @@
             try {
                 // No socket, or dying socket, let's get a new one.
                 this._wsSocket = new WebSocket(this.options.socketUrl);
+                console.log('connect socket', this.options.socketUrl);
             } catch (e) {
                 // This can happen if the server is down, or malconfigured.
                 return null;
@@ -323,6 +326,7 @@
 
             // Queue request
             this._wsRequestQueue.push(requestJson);
+            console.log('已加入缓存队列', requestJson);
 
             if (!socket.onopen) {
                 // The websocket is not open yet; we have to set sending of the message in onopen.
@@ -368,6 +372,7 @@
      * @param {event} event The websocket onmessage-event.
      */
     JsonRpcClient.prototype._wsOnMessage = function (event) {
+        console.log('response ->', event.data);
         // Check if this could be a JSON RPC message.
         var response;
         try {
@@ -458,8 +463,12 @@
 
                 // Run callback with the error object as parameter.
                 //因为自动重连会多次回调错误，此处增加标记位，只回调一次错误
-                if (!this._wsCallbacks[key].hasReportError)
+                if (!this._wsCallbacks[key].hasReportError){
                     errorCb(error);
+                }else {
+                    // console.log('Socket errored.');
+                }
+
 
                 this._wsCallbacks[key].hasReportError = true;
             }
